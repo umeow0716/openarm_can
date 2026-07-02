@@ -33,7 +33,7 @@ struct OpenArmGroup::Worker {
             request = false;
         }
 
-        cv.notify_one();
+        cv.notify_all();
     }
 
     void join() noexcept {
@@ -65,7 +65,16 @@ struct OpenArmGroup::Worker {
 
     OpenArmRefreshResult wait_result() {
         std::unique_lock<std::mutex> lock(mutex);
-        cv.wait(lock, [this]() { return done; });
+        cv.wait(lock, [this]() { return done || stop; });
+
+        if (!done && stop) {
+            OpenArmRefreshResult stopped_result;
+            stopped_result.interface = arm ? arm->can_interface() : "";
+            stopped_result.ok = false;
+            stopped_result.error = "OpenArmGroup worker stopped before completing refresh";
+            return stopped_result;
+        }
+
         return result;
     }
 
