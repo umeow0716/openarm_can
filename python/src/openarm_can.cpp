@@ -493,7 +493,7 @@ NB_MODULE(openarm_can, m) {
         .def_rw("ok", &OpenArmRefreshResult::ok)
         .def_rw("error", &OpenArmRefreshResult::error);
 
-        nb::class_<OpenArmGroup>(m, "OpenArmGroup")
+    nb::class_<OpenArmGroup>(m, "OpenArmGroup")
         .def(nb::init<const std::vector<std::string>&, bool>(),
              nb::arg("can_interfaces"),
              nb::arg("enable_fd") = false)
