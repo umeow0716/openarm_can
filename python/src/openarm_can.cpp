@@ -481,6 +481,11 @@ NB_MODULE(openarm_can, m) {
              &OpenArm::refresh_all_and_recv,
              nb::arg("timeout_us") = 500,
              nb::call_guard<nb::gil_scoped_release>())
+        .def(
+             "recv_wait_all",
+             &OpenArm::recv_wait_all,
+             nb::arg("timeout_us") = 500,
+             nb::call_guard<nb::gil_scoped_release>())
         .def("expected_response_count", &OpenArm::expected_response_count)
         .def("set_callback_mode_all", &OpenArm::set_callback_mode_all, nb::arg("callback_mode"))
         .def("query_param_all", &OpenArm::query_param_all, nb::arg("rid"));
@@ -514,5 +519,9 @@ NB_MODULE(openarm_can, m) {
         .def(
              "refresh_all_and_recv",
              &OpenArmGroup::refresh_all_and_recv,
+             nb::arg("timeout_us") = 500)
+        .def(
+             "recv_wait_all",
+             &OpenArmGroup::recv_wait_all,
              nb::arg("timeout_us") = 500);
 }

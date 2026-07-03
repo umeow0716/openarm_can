@@ -10,6 +10,11 @@
 
 namespace openarm::can::socket {
 
+enum class Operation {
+    RefreshAndRecv,
+    RecvWaitAll,
+};
+
 struct OpenArmGroup::Worker {
     explicit Worker(std::unique_ptr<OpenArm> arm_) : arm(std::move(arm_)) {}
 
@@ -47,7 +52,7 @@ struct OpenArmGroup::Worker {
         join();
     }
 
-    void request_refresh(int new_timeout_us) {
+    void request_operation(Operation new_operation, int new_timeout_us) {
         {
             std::lock_guard<std::mutex> lock(mutex);
 
@@ -55,6 +60,7 @@ struct OpenArmGroup::Worker {
                 throw std::runtime_error("OpenArmGroup worker is stopped");
             }
 
+            operation = new_operation;
             timeout_us = new_timeout_us;
             done = false;
             request = true;
@@ -71,7 +77,7 @@ struct OpenArmGroup::Worker {
             OpenArmRefreshResult stopped_result;
             stopped_result.interface = arm ? arm->can_interface() : "";
             stopped_result.ok = false;
-            stopped_result.error = "OpenArmGroup worker stopped before completing refresh";
+            stopped_result.error = "OpenArmGroup worker stopped before completing operation";
             return stopped_result;
         }
 
@@ -81,6 +87,7 @@ struct OpenArmGroup::Worker {
     void run() noexcept {
         while (true) {
             int local_timeout_us = 0;
+            Operation local_operation = Operation::RefreshAndRecv;
 
             {
                 std::unique_lock<std::mutex> lock(mutex);
@@ -90,11 +97,12 @@ struct OpenArmGroup::Worker {
                     return;
                 }
 
+                local_operation = operation;
                 local_timeout_us = timeout_us;
                 request = false;
             }
 
-            OpenArmRefreshResult local_result = execute_refresh(local_timeout_us);
+            OpenArmRefreshResult local_result = execute_operation(local_operation, local_timeout_us);
 
             {
                 std::lock_guard<std::mutex> lock(mutex);
@@ -106,13 +114,22 @@ struct OpenArmGroup::Worker {
         }
     }
 
-    OpenArmRefreshResult execute_refresh(int local_timeout_us) noexcept {
+    OpenArmRefreshResult execute_operation(Operation local_operation, int local_timeout_us) noexcept {
         OpenArmRefreshResult local_result;
         local_result.interface = arm->can_interface();
 
         try {
             local_result.expected = arm->expected_response_count();
-            local_result.received = arm->refresh_all_and_recv(local_timeout_us);
+
+            switch (local_operation) {
+                case Operation::RefreshAndRecv:
+                    local_result.received = arm->refresh_all_and_recv(local_timeout_us);
+                    break;
+                case Operation::RecvWaitAll:
+                    local_result.received = arm->recv_wait_all(local_timeout_us);
+                    break;
+            }
+
             local_result.ok = (local_result.received == local_result.expected);
         } catch (const std::exception& e) {
             local_result.ok = false;
@@ -125,6 +142,14 @@ struct OpenArmGroup::Worker {
         return local_result;
     }
 
+    void request_refresh(int new_timeout_us) {
+        request_operation(Operation::RefreshAndRecv, new_timeout_us);
+    }
+
+    void request_recv_wait_all(int new_timeout_us) {
+        request_operation(Operation::RecvWaitAll, new_timeout_us);
+    }
+
     std::unique_ptr<OpenArm> arm;
     std::thread thread;
     std::mutex mutex;
@@ -134,6 +159,7 @@ struct OpenArmGroup::Worker {
     bool request = false;
     bool done = true;
 
+    Operation operation = Operation::RefreshAndRecv;
     int timeout_us = 500;
     OpenArmRefreshResult result;
 };
@@ -247,6 +273,27 @@ std::vector<OpenArmRefreshResult> OpenArmGroup::refresh_all_and_recv(int timeout
 
     for (auto& worker : workers_) {
         worker->request_refresh(timeout_us);
+    }
+
+    std::vector<OpenArmRefreshResult> results;
+    results.reserve(workers_.size());
+
+    for (auto& worker : workers_) {
+        results.push_back(worker->wait_result());
+    }
+
+    return results;
+}
+
+std::vector<OpenArmRefreshResult> OpenArmGroup::recv_wait_all(int timeout_us) {
+    if (timeout_us < 0) {
+        throw std::invalid_argument("timeout_us must be non-negative");
+    }
+
+    std::lock_guard<std::mutex> lock(api_mutex_);
+
+    for (auto& worker : workers_) {
+        worker->request_recv_wait_all(timeout_us);
     }
 
     std::vector<OpenArmRefreshResult> results;
