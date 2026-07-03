@@ -41,6 +41,7 @@ public:
     void set_zero_all();
 
     std::vector<OpenArmRefreshResult> refresh_all_and_recv(int timeout_us = 500);
+    std::vector<OpenArmRefreshResult> recv_wait_all(int timeout_us = 500);
 
 private:
     struct Worker;

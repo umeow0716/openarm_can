@@ -143,9 +143,11 @@ int OpenArm::flush_rx() {
 int OpenArm::refresh_all_and_recv(int timeout_us) {
     flush_rx();
     refresh_all();
-    return recv_expected_responses(
-        timeout_us,
-        static_cast<int>(master_can_device_collection_->get_devices().size()));
+    return recv_expected_responses(timeout_us, expected_response_count());
+}
+
+int OpenArm::recv_wait_all(int timeout_us) {
+    return recv_expected_responses(timeout_us, expected_response_count());
 }
 
 int OpenArm::expected_response_count() const {
